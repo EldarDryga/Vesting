@@ -27,7 +27,6 @@ describe.only("Vesting", function () {
         await vesting.connect(owner).startVesting(amountOfDistribution, periodOfDistributionInDays, amountOfDistributionPerUser)
         await expect(vesting.connect(acc2).claimRevard()).to.be.revertedWith("You have not joined the vesting");
         expect(await DPT.balanceOf(vesting.address)).to.eq(10000)
-        expect(await vesting.initialized()).to.eq(true)
         expect(await vesting.maxUsers()).to.eq(100)
         await vesting.connect(acc2).join()
         expect(await vesting.users()).to.eq(1)
@@ -56,7 +55,7 @@ describe.only("Vesting", function () {
         const blockBefore = await ethers.provider.getBlock(blockNumBefore);
         const timestampBefore = blockBefore.timestamp;
         await ethers.provider.send('evm_mine', [timestampBefore + fiveDays]);
-        await vesting.connect(acc3).showRevardToClaim()
+        console.log(await vesting.connect(acc3).showRevardToClaim())
         await vesting.connect(acc3).claimRevard()
        
         expect(await DPT.balanceOf(vesting.address)).to.eq(9501)

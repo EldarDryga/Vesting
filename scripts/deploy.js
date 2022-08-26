@@ -7,7 +7,7 @@ async function main() {
    
     const [signer] = await ethers.getSigners()
     const DniproToken = await ethers.getContractFactory("DPT");
-    DPT = await DniproToken.deploy("DniproToken", "DPT", BigNumber.from("1000000000").mul(BigNumber.from("10").pow(18)));
+    DPT = await DniproToken.deploy("DniproToken", "DPT", BigNumber.from("1000000000000").mul(BigNumber.from("10").pow(18)));
     await DPT.deployed()
     const Vesting = await ethers.getContractFactory("Vesting", signer)
     

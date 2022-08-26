@@ -1,6 +1,8 @@
 require("@nomiclabs/hardhat-waffle");
 require("dotenv").config();
 require("@nomiclabs/hardhat-etherscan")
+require("hardhat-gas-reporter");
+
 
 // This is a sample Hardhat task. To learn how to create your own go to
 // https://hardhat.org/guides/create-task.html
@@ -32,7 +34,12 @@ module.exports = {
       chainId:1337
     }
   },
+  gasReporter: {
+    enabled: (process.env.REPORT_GAS) ? true : false,
+    currency: "USD",
+    coinmarketcap: process.env.COINMARKETCAP_API_KEY
+  },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_KEY
+   apiKey: process.env.ETHERSCAN_KEY
   }
 };
