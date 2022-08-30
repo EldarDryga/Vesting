@@ -3,32 +3,39 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-
+import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 /// @title Vesting
 /// @author Eldar Dryga
 /// @notice this contract allows you to distribute tokens to users within a certain time
 
-contract Vesting is Ownable, ReentrancyGuard {
+contract Vesting is Ownable {
     using SafeERC20 for IERC20;
-    IERC20 private immutable _token;
+    using SafeCast for uint256;
 
-    uint32 public periodOfDistributionInDays;
-    uint32 public amountOfDistributionPerUser;
-    uint128 public users;
+
+    IERC20 internal immutable _token;
+
+    uint256 public periodOfDistributionInDays;
+    uint256 public amountOfDistributionPerUser;
+    uint256 public users;
     uint256 public maxUsers;
 
     struct UsersInfo {
-        uint256 userTime;
-        uint256 claimedRevard;
-        uint256 allClaimedRevard;
-        uint256 finalDistributionTime;
+        uint32 userTime;
+        uint32 finalDistributionTime;
+        uint128 claimedRevard;
+        uint128 allClaimedRevard;
     }
     mapping(address => UsersInfo) public infoOfUser;
 
+    event VestingStarted(uint256 _amountOfDistribution,
+        uint256 _periodOfDistributionInDays,
+        uint256 _amountOfDistributionPerUser,
+        uint256 _maxusers);
+        event UserClaimedRevard(address indexed _user, uint256 _claimedRevard, uint _allClaimedRevard);
     constructor(address token_) {
-        require(token_ != address(0));
+        require(token_ != address(0), "Address of token = 0");
         _token = IERC20(token_);
     }
 
@@ -37,8 +44,8 @@ contract Vesting is Ownable, ReentrancyGuard {
     /// @param _amountOfDistributionPerUser the amount of tokens for distribution for 1 user
     function startVesting(
         uint256 _amountOfDistribution,
-        uint16 _periodOfDistributionInDays,
-        uint32 _amountOfDistributionPerUser
+        uint256 _periodOfDistributionInDays,
+        uint256 _amountOfDistributionPerUser
     ) public onlyOwner {
         _token.safeTransferFrom(
             msg.sender,
@@ -48,35 +55,36 @@ contract Vesting is Ownable, ReentrancyGuard {
         periodOfDistributionInDays = _periodOfDistributionInDays;
         amountOfDistributionPerUser = _amountOfDistributionPerUser;
         maxUsers = _amountOfDistribution / amountOfDistributionPerUser;
+        emit VestingStarted(_amountOfDistribution, _periodOfDistributionInDays, _amountOfDistributionPerUser, maxUsers);
     }
 
     /// @notice this function can only be called by the owner of the contract
     /// @dev call this function to start vesting
 
-    function join() public nonReentrant {
+    function join() public {
+        users++;
         require(periodOfDistributionInDays != 0, "Vesting has not started");
-        infoOfUser[msg.sender].userTime = getCurrentTime();
         require(
-            infoOfUser[msg.sender].claimedRevard == 0,
+            infoOfUser[msg.sender].userTime == 0,
             "You have already started vesting, use claimRevard to receive your revard"
         );
-        users++;
         require(
             maxUsers >= users,
             "Unfortunately, the tokens for distribution have already been distributed, or are distributing to the remaining users"
         );
-        infoOfUser[msg.sender].finalDistributionTime =
-            getCurrentTime() +
-            (periodOfDistributionInDays * 86400);
+        uint dayInSeconds = 86400;
+        infoOfUser[msg.sender].userTime = getCurrentTime();
+        infoOfUser[msg.sender].finalDistributionTime =  (getCurrentTime() +
+        (periodOfDistributionInDays * dayInSeconds)).toUint32();
     }
 
     /// @dev Returns current timestamp
-    function getCurrentTime() internal view virtual returns (uint256) {
-        return block.timestamp;
+    function getCurrentTime() internal view virtual returns (uint32) {
+        return  (block.timestamp).toUint32();
     }
 
     /// @notice call this function to receive available tokens
-    function claimRevard() public nonReentrant {
+    function claimRevard() public  {
         require(periodOfDistributionInDays != 0, "Vesting has not started");
         require(
             infoOfUser[msg.sender].userTime > 0,
@@ -86,16 +94,15 @@ contract Vesting is Ownable, ReentrancyGuard {
             infoOfUser[msg.sender].finalDistributionTime != 0,
             "You have received all tokens"
         );
-
-        uint256 tokenPerSecond = (amountOfDistributionPerUser * 1000000) /
-            (periodOfDistributionInDays * 86400);
-        infoOfUser[msg.sender].claimedRevard =
-            (getCurrentTime() - infoOfUser[msg.sender].userTime) *
-            tokenPerSecond;
-
+        uint dayInSeconds = 86400;
+        uint256 oneMillion = 1000000;
+        uint256 tokenPerSecond = (amountOfDistributionPerUser * oneMillion) /
+            (periodOfDistributionInDays * dayInSeconds);
+        
+ 
         if (getCurrentTime() >= infoOfUser[msg.sender].finalDistributionTime) {
             infoOfUser[msg.sender].claimedRevard =
-                amountOfDistributionPerUser -
+                (amountOfDistributionPerUser).toUint128() -
                 infoOfUser[msg.sender].allClaimedRevard;
             _token.safeTransfer(
                 msg.sender,
@@ -103,29 +110,40 @@ contract Vesting is Ownable, ReentrancyGuard {
             );
             infoOfUser[msg.sender].finalDistributionTime = 0;
         } else {
+            infoOfUser[msg.sender].claimedRevard =
+            ((getCurrentTime() - infoOfUser[msg.sender].userTime) *
+            tokenPerSecond).toUint128();
             _token.safeTransfer(
                 msg.sender,
-                infoOfUser[msg.sender].claimedRevard / 1000000
+                infoOfUser[msg.sender].claimedRevard / oneMillion
             );
             infoOfUser[msg.sender].userTime = getCurrentTime();
         }
         infoOfUser[msg.sender].allClaimedRevard =
-            infoOfUser[msg.sender].allClaimedRevard +
+            (infoOfUser[msg.sender].allClaimedRevard +
             infoOfUser[msg.sender].claimedRevard /
-            1000000;
+            oneMillion).toUint128();
+            emit UserClaimedRevard(msg.sender, (infoOfUser[msg.sender].claimedRevard / oneMillion), infoOfUser[msg.sender].allClaimedRevard);
     }
 
     /// @notice Use this function to see, what revard you can claim
-    function showRevardToClaim() public view returns (uint256) {
-        if (getCurrentTime() >= infoOfUser[msg.sender].finalDistributionTime) {
-            revert("Time to claim all your revard!");
-        } else {
-            uint256 tokenPerSecond = (amountOfDistributionPerUser * 1000000) /
-                (periodOfDistributionInDays * 86400);
-            uint256 claimedRevard = ((getCurrentTime() -
-                infoOfUser[msg.sender].userTime) * tokenPerSecond) / 1000000;
-            return (claimedRevard);
-        }
+    function showRevardToClaim() public view returns (uint128 claimedRevard) {
+            uint dayInSeconds = 86400;
+            uint256 oneMillion = 1000000;
+            if (getCurrentTime() >= infoOfUser[msg.sender].finalDistributionTime) {
+            claimedRevard =
+                (amountOfDistributionPerUser).toUint128() -
+                infoOfUser[msg.sender].allClaimedRevard;
+            
+            }
+            else{
+            uint256 tokenPerSecond = (amountOfDistributionPerUser * oneMillion) /
+                (periodOfDistributionInDays * dayInSeconds);
+              claimedRevard = (((getCurrentTime() -
+                infoOfUser[msg.sender].userTime) * tokenPerSecond) / oneMillion).toUint128();
+            }
+            
+        
     }
 
     ///@dev call this function to stop this vesting
@@ -134,4 +152,5 @@ contract Vesting is Ownable, ReentrancyGuard {
         users = 0;
         _token.safeTransfer(msg.sender, _token.balanceOf(address(this)));
     }
+    
 }
